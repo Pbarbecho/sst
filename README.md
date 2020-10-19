@@ -1,7 +1,3 @@
-<p align="left">
-  <img src="doc/logo.png" width="400">
-</p>
-
 # SUMO output files processing SFP #
 
 SFP  allows to process SUMO output files.  
@@ -15,7 +11,7 @@ pip3 install pipenv
 
 To clone the osm repository, on the command line, enter:
 ```bash
-git clone https://github.com/Pbarbecho/osm.git
+git clone https://github.com/Pbarbecho/sst.git
 ```
 On the new venv, install osm project in an editable mode:
 
