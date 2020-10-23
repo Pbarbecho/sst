@@ -22,7 +22,7 @@ setup(
     author_email='pablo.barbecho@upc.edu',
     keywords='SUMO Outputs',
     packages=find_packages(),
-    python_requires='>=3.6',
+    python_requires='>=3.5',
     install_requires=['matplotlib', 'numpy ', 'pandas', 'seaborn', 'argparse'],
     entry_points={
         'console_scripts': [
