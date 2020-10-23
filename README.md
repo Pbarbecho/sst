@@ -25,10 +25,10 @@ Then, for use the new virtual environment instantiate a sub-shell as follows:
 pipenv shell
 ```
 
-At this time, you can interact with the SPF modules, customize you analysis and use osm utilities. 
+At this time, you can interact with the SPF modules, customize you analysis and use sst utilities. 
 
  
-In case you want to uninstall osm package: 
+In case you want to uninstall sst package: 
 
 ```bash
 pip3 uninstall sst
