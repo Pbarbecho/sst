@@ -9,6 +9,7 @@ import os
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
+from pandasgui import show
 import numpy as np
 from xml.dom import minidom
 import seaborn as sns
@@ -134,6 +135,7 @@ def main(args=None):
         rou_file_df.rename(columns={"vehicle_id": "ID"}, inplace=True)
         sumo_output_file_df.rename(columns={"tripinfo_id": "ID"},  inplace=True)
         trip_rou_data = sumo_output_file_df.set_index('ID').join(rou_file_df.set_index('ID'))
+        gui = show(trip_rou_data)
         # save merge file
         trip_rou_data.to_csv(os.path.join(dir, 'trip_rou_data.csv'), header=True)
     elif options.type == 'summary':
