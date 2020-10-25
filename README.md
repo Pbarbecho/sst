@@ -19,8 +19,8 @@ optional arguments:
 
 SUMO output file names must follows:
 
-tripinfo -> tripinfo.xml
-summary  -> summary.xml
+* tripinfo -> tripinfo.xml
+* summary  -> summary.xml
 
 
 
