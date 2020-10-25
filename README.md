@@ -2,6 +2,27 @@
 
 SFP  allows to process SUMO output files.  
 
+# Usage #
+
+```bash
+# sumo_statistics --help
+usage: SUMO Statistics -t <type of file>  -i <sumo output file> -s <sumo sim files directory>
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -t TYPE, --type TYPE  (tripinfo/summary/emmisions) type of output file
+  -i INPUT, --input INPUT
+                        SUMO output file (tripinfo/summary/emmisions)
+  -s SUMOFILES, --dir SUMOFILES
+                        Path of SUMO simulation files (.rou, TAZ)
+```
+
+SUMO output file names must follows:
+
+* tripinfo -> tripinfo.xml
+* summary  -> summary.xml
+
+
 
 ## Clone the repository ##
 The osm package is developed using a pipenv. TO install osm on a virtual environment:
@@ -33,6 +54,8 @@ In case you want to uninstall sst package:
 ```bash
 pip3 uninstall sst
 ```
+
+
 
 ## Authors ##
 
