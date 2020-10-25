@@ -52,7 +52,7 @@ At this time, you can interact with the SPF modules, customize you analysis and 
 In case you want to uninstall sst package: 
 
 ```bash
-pip3 uninstall sst
+pip3 uninstall sumo_statistics
 ```
 
 
