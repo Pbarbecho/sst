@@ -20,7 +20,7 @@ if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(tools))
     #from sumolib.output import parse  # noqa
     #from sumolib.net import readNet  # noqa
-    #from sumolib.miscutils import Statistics  # noqa
+    from sumolib.miscutils import Statistics  # noqa
 else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
 
@@ -72,7 +72,7 @@ def xml2df(indir, outdir, name):
     return pd.read_csv(output)
 
 
-def example_plots(data, type, input_dir):
+def summary_example_plots(data, type, input_dir):
     """
     //  Summary Output file structure
     Index(['step_arrived', 'step_collisions', 'step_duration', 'step_ended',
@@ -80,32 +80,51 @@ def example_plots(data, type, input_dir):
            'step_meanSpeedRelative', 'step_meanTravelTime', 'step_meanWaitingTime',
            'step_running', 'step_teleports', 'step_time', 'step_waiting'],
           dtype='object')
-
-    //  Tripinfo Output file structure
-    Index(['tripinfo_arrival', 'tripinfo_arrivalLane', 'tripinfo_arrivalPos',
-       'tripinfo_arrivalSpeed', 'tripinfo_depart', 'tripinfo_departDelay',
-       'tripinfo_departLane', 'tripinfo_departPos', 'tripinfo_departSpeed',
-       'tripinfo_devices', 'tripinfo_duration', 'tripinfo_id',
-       'tripinfo_rerouteNo', 'tripinfo_routeLength', 'tripinfo_speedFactor',
-       'tripinfo_stopTime', 'tripinfo_timeLoss', 'tripinfo_vType',
-       'tripinfo_vaporized', 'tripinfo_waitingCount', 'tripinfo_waitingTime'],
-      dtype='object')
-
     """
     # e.g. plots
-    if type == 'summary':
-        # Time(min) vs vehicles status (inserted running teleported)
-        x= data['step_time']/60
-        plt.plot(x, data['step_inserted'], linewidth=1.0, label='Inserted veh')
-        plt.plot(x, data['step_running'], color='green', linewidth=1.0,  linestyle='--', label='Running veh')
-        plt.plot(x, data['step_teleports'], color='red', linewidth=1.0, linestyle='--', label='Teleported veh')
-        plt.legend(loc='best')
-        plt.xlabel('Time [min]')
-        plt.ylabel('# of vehicles')
-        plt.savefig(os.path.join(os.path.split(input_dir)[0], '{}_timeVSvehstatus.pdf'.format(type)), bbox_inches="tight")
-    #if type == 'tripinfo':
-        # Time(min) vs vehicles status (inserted running teleported)
-        # tripinfo_routeLength
+
+    # Time(min) vs vehicles status (inserted running teleported)
+    x= data['step_time']/60
+    plt.plot(x, data['step_inserted'], linewidth=1.0, label='Inserted veh')
+    plt.plot(x, data['step_running'], color='green', linewidth=1.0,  linestyle='--', label='Running veh')
+    plt.plot(x, data['step_teleports'], color='red', linewidth=1.0, linestyle='--', label='Teleported veh')
+    plt.legend(loc='best')
+    plt.xlabel('Time [min]')
+    plt.ylabel('# of vehicles')
+    plt.savefig(os.path.join(os.path.split(input_dir)[0], '{}_timeVSvehstatus.pdf'.format(type)), bbox_inches="tight")
+
+
+def merge_data_plots(merge_data, input_dir):
+    """
+    merge data structure
+    Index(['tripinfo_arrival', 'tripinfo_arrivalLane', 'tripinfo_arrivalPos',
+           'tripinfo_arrivalSpeed', 'tripinfo_depart', 'tripinfo_departDelay',
+           'tripinfo_departLane', 'tripinfo_departPos', 'tripinfo_departSpeed',
+           'tripinfo_devices', 'tripinfo_duration', 'tripinfo_rerouteNo',
+           'tripinfo_routeLength', 'tripinfo_speedFactor', 'tripinfo_stopTime',
+           'tripinfo_timeLoss', 'tripinfo_vType', 'tripinfo_vaporized',
+           'tripinfo_waitingCount', 'tripinfo_waitingTime', 'vehicle_depart',
+           'vehicle_departLane', 'vehicle_departSpeed', 'vehicle_fromTaz',
+           'vehicle_toTaz', 'route_edges'],
+    """
+
+    TAZ_statistics = merge_data.groupby('vehicle_fromTaz').describe()
+    TAZ_statistics = TAZ_statistics.reset_index(level=list(range(TAZ_statistics.index.nlevels)))
+    TAZ_statistics.to_csv(os.path.join(os.path.split(input_dir)[0], 'TAZ_statistics.csv'), header=True)
+    # PLOT 1 -> # Number of routes
+    ax1 = sns.barplot(TAZ_statistics['vehicle_fromTaz'], TAZ_statistics['tripinfo_routeLength']['count'])
+    ax1.set(xlabel=r"Routes", ylabel=r'# of routes')
+    plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_count.pdf'), bbox_inches='tight')
+    plt.clf()
+    # PLOT 2 -> # Route distance
+    ax2 = sns.barplot(TAZ_statistics['vehicle_fromTaz'], TAZ_statistics['tripinfo_routeLength']['mean']/1000)
+    ax2.set(xlabel=r"Routes", ylabel=('Route distance [km]'))
+    plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_distance.pdf'),bbox_inches='tight')
+    plt.clf()
+    # PLOT 3 -> # Route Time
+    ax3 = sns.barplot(TAZ_statistics['vehicle_fromTaz'], TAZ_statistics['tripinfo_duration']['mean']/60)
+    ax3.set(xlabel=r"Routes", ylabel=('Route time [min]'))
+    plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_time.pdf'),bbox_inches='tight')
 
 
 def SUMO_files_search(dir):
@@ -133,18 +152,16 @@ def main(args=None):
         # Merge dataframes by index "ID"
         rou_file_df.rename(columns={"vehicle_id": "ID"}, inplace=True)
         sumo_output_file_df.rename(columns={"tripinfo_id": "ID"},  inplace=True)
-        trip_rou_data = sumo_output_file_df.set_index('ID').join(rou_file_df.set_index('ID'))
+        merge_data = sumo_output_file_df.set_index('ID').join(rou_file_df.set_index('ID'))
         # save merge file
-        trip_rou_data.to_csv(os.path.join(dir, 'trip_rou_data.csv'), header=True)
+        merge_data.to_csv(os.path.join(dir, 'trip_rou_data.csv'), header=True)
+        # Plot statistics
+        merge_data_plots(merge_data, options.input)
     elif options.type == 'summary':
-        # convert summary file to df
-        None
+        # Plot statistics
+        summary_example_plots(sumo_output_file_df, options.input)
     else:
         sys.exit("Type not valid")
-
-    # Plot statistics
-    example_plots(sumo_output_file_df, options.type, options.input)
-
 
 
 if __name__ == "__main__":
