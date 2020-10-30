@@ -37,5 +37,5 @@ pip3 uninstall sst
 ## Authors ##
 
 Pablo Barbecho
-Guillem
+Guillem Jordi
 
