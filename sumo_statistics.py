@@ -17,7 +17,7 @@ import os
 import sys
 import pandas as pd
 import matplotlib
-matplotlib.use("TkAgg")
+#matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import numpy as np
 from xml.dom import minidom
@@ -188,16 +188,15 @@ def main(args=None):
     
     print(f'Parsed --> {results_name}')
 
+
     # get plot insigths
     markers=['o','+','x','^','<']
     ax = plt.axes()
     for i, hospital in enumerate(filtered_data['vehicle_toTaz'].unique()):
         df = filtered_data[filtered_data['vehicle_toTaz'] == hospital]
         df.plot.scatter(x='tripinfo_duration',y='tripinfo_routeLength',marker=markers[i], label=hospital, ax=ax)
-    #filtered_data["tripinfo_duration"].plot.hist()
     filtered_data.plot.box(figsize=(20,5))
-    plt.savefig('/root/Desktop/test.pdf')
-    
+    plt.savefig('/root/Documents/SUMO_SEM/CATALUNYA/plots/box.pdf')
     
     # data encoder
     filtered_data = pd.get_dummies(filtered_data, columns=['vehicle_fromTaz', 'vehicle_toTaz'])
@@ -209,11 +208,15 @@ def main(args=None):
        #filtered_data = filtered_data.dropna()
        # fill missing values with mean value e.g. tripinfo duration
        filtered_data['tripinfo_duration'] = filtered_data['tripinfo_duration'].fillna(filtered_data['tripinfo_duration'].mean())
-       
-    filtered_data.hist() 
-    plt.show()       
-    filtered_data.to_csv(os.path.join(options.sumofiles,'../parsed',results_name), header=True)           
-    
-    
+
+
+    # get plot insigths
+    plt.rcParams.update({'font.size': '5'})
+    #filtered_data.hist()
+    filtered_data.hist(figsize=(10, 12))
+    plt.savefig('/root/Documents/SUMO_SEM/CATALUNYA/plots/hist.pdf')
+    filtered_data.to_csv(os.path.join(options.sumofiles,'../parsed',results_name), header=True)
+
+
 if __name__ == "__main__":
     main()
