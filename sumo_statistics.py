@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Nov 21 11:00:34 2020
+
+@author: root
+"""
+
 # @file    sumo_statistics.py
 # @author  Pablo Barbecho
 # @author  Guillem
@@ -8,6 +16,8 @@ import argparse
 import os
 import sys
 import pandas as pd
+import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import numpy as np
 from xml.dom import minidom
@@ -27,29 +37,13 @@ else:
 
 def get_options(args=None):
     ## Command line options ##
-    parser = argparse.ArgumentParser(prog='SUMO Statistics', usage='%(prog)s -t <type of file>  -i <sumo output file> -s <sumo sim files directory>' )
-    parser.add_argument('-t', '--type', dest='type', help='(tripinfo/summary/emmisions) type of output file', default='tripinfo')
-    parser.add_argument('-i', '--input', type=file_exist, dest='input', help='SUMO output file (tripinfo/summary/emmisions)')
-    parser.add_argument('-s', '--dir', type=directory_exist, dest='sumofiles', help='Path of SUMO simulation files (.rou, TAZ)')
+    parser = argparse.ArgumentParser(prog='SUMO Statistics', usage='%(prog)s -c <sumo sim files directory> -s <sumo output files directory>' )
+    parser.add_argument('-c', '--sim dir', type=directory_exist, dest='simfiles', help='SUMO simulation files directory (rou/TAZ)')
+    parser.add_argument('-s', '--output dir', type=directory_exist, dest='sumofiles', help='SUMO output files directory (tripinfo/summary)')
     options = parser.parse_args(args=args)
-    if not options.type in ['tripinfo', 'summary', 'emmisions']:
-        sys.exit("Type not valid")
-    if not options.input:
-        sys.exit("SUMO output file is required as input -i [option]")
-    if not options.sumofiles:
-        sys.exit("Path to SUMO simfiles is required -s [option]")
+    if not options.sumofiles or not options.sumofiles:
+        sys.exit("-s [options] and -c [options] are required, see sumo_statistics --help")
     return options
-
-
-def file_exist(dir_name):
-    ## Validate input file ##
-    dir, name = os.path.split(dir_name)
-    directory_exist(dir)
-    dir_files = os.listdir(dir)
-    if name in dir_files:
-        return dir_name
-    else:
-        raise argparse.ArgumentTypeError("{}{} file not found".format(dir, name))
 
 
 def directory_exist(dir):
@@ -60,13 +54,14 @@ def directory_exist(dir):
         raise argparse.ArgumentTypeError("{} invalid directory ".format(dir))
 
 
-def xml2df(indir, outdir, name):
+def xml2df(in_directory, name):
     # output dir
-    output = os.path.join(outdir, 'converted_{}.csv'.format(name.split('.')[0]))
+    output = os.path.join(in_directory,'..','xmltocsv', f'{name.strip(".xml")}.csv')
     # SUMO tool xml into csv
     sumo_tool = os.path.join(tools, 'xml', 'xml2csv.py')
     # Run sumo tool with sumo output file as input
-    cmd = 'python {} {} -s , -o {}'.format(sumo_tool, os.path.join(indir,name), output)
+    cmd = 'python {} {} -s , -o {}'.format(sumo_tool, os.path.join(in_directory,name), output)
+    print(f'{name} -->  {name.strip(".xml")}.csv')
     os.system(cmd)
     # return dataframe
     return pd.read_csv(output)
@@ -127,42 +122,99 @@ def merge_data_plots(merge_data, input_dir):
     plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_time.pdf'),bbox_inches='tight')
 
 
-def SUMO_files_search(dir):
+def sim_files_search(dir):
     # list sumo simulation files
     sumo_files = os.listdir(dir)
     # Find rou and taz files
-    rou_file_name = [file for file in sumo_files if 'rou' in file.split('.')][0]
+    rou_file_name = [file for file in sumo_files 
+                     if 'alt' not in file.split('.')
+                     if 'dua' in file.split('.')
+                     if 'rou' in file.split('.')][0]
     taz_file_name = [file for file in sumo_files if 'TAZ' in file.split('.')][0]
-    return rou_file_name, taz_file_name
+   
+    if rou_file_name and taz_file_name:
+        return rou_file_name, taz_file_name
+    else:
+        sys.exit('.rou or TAZ files not found')
 
 
 def main(args=None):
     # get command line options
     options = get_options(args)
-    # tripinfo/summary files
-    dir, name = os.path.split(options.input)
-    # convert sumo output file to df
-    sumo_output_file_df = xml2df(dir, dir, name)
-
-    # Merge tripinfo and route files by vehicleID
-    if options.type == 'tripinfo':
-        # convert to df .rou/taz files
-        rou, taz = SUMO_files_search(options.sumofiles)
-        rou_file_df = xml2df(options.sumofiles, dir, rou)
-        # Merge dataframes by index "ID"
-        rou_file_df.rename(columns={"vehicle_id": "ID"}, inplace=True)
-        sumo_output_file_df.rename(columns={"tripinfo_id": "ID"},  inplace=True)
-        merge_data = sumo_output_file_df.set_index('ID').join(rou_file_df.set_index('ID'))
-        # save merge file
-        merge_data.to_csv(os.path.join(dir, 'trip_rou_data.csv'), header=True)
-        # Plot statistics
-        merge_data_plots(merge_data, options.input)
-    elif options.type == 'summary':
-        # Plot statistics
-        summary_example_plots(sumo_output_file_df, options.input)
+    
+    # read sumo tripinfo and summary files
+    sumo_file_list = os.listdir(options.sumofiles)
+    if sumo_file_list:
+        files_dic = {}
+        for f in sumo_file_list:
+            files_dic[f.strip('.xml')] = xml2df(options.sumofiles, f)
     else:
-        sys.exit("Type not valid")
+         sys.exit(f"Empty folder or tripinfo file missing {options.sumofiles}")
 
+    
+    # find/convert sumo simulation .rou/taz files
+    rou, taz = sim_files_search(options.simfiles)
+    rou_file_df = xml2df(options.simfiles, rou)
+    
+    # Prepare dataframes to merge tripinfo and route files by vehicleID
+    rou_file_df.rename(columns={"vehicle_id": "ID"}, inplace=True)
+    tripinfo_df = files_dic['tripinfo']
+    tripinfo_df.rename(columns={"tripinfo_id": "ID"},  inplace=True)
+    
+    # merge dataframes
+    merge_data = tripinfo_df.set_index('ID').join(rou_file_df.set_index('ID'))
+    
+    # filter data
+    results_name = 'filter_trip_rou_data.csv'
+    filtered_data = merge_data[['tripinfo_arrivalSpeed', 
+                               'tripinfo_duration',
+                               'tripinfo_rerouteNo',
+                               'tripinfo_routeLength', 
+                               'tripinfo_speedFactor',
+                               'tripinfo_departSpeed',
+                               'tripinfo_timeLoss', 
+                               'tripinfo_vaporized',
+                               'tripinfo_waitingCount', 
+                               'tripinfo_waitingTime', 
+                               'vehicle_type', 
+                               'vehicle_fromTaz',
+                               'vehicle_toTaz']]
+    
+    
+    # filter unfinished trips or teleported vehicles
+    filtered_data = filtered_data.loc[filtered_data['tripinfo_rerouteNo'] == 0 &
+                                      filtered_data['tripinfo_vaporized'].empty]
+    filtered_data.drop(columns='tripinfo_vaporized', inplace=True)
+    
+    print(f'Parsed --> {results_name}')
 
+    
+    # get plot insigths
+    markers=['o','+','x','^','<']
+    ax = plt.axes()
+    for i, hospital in enumerate(filtered_data['vehicle_toTaz'].unique()):
+        df = filtered_data[filtered_data['vehicle_toTaz'] == hospital]
+        df.plot.scatter(x='tripinfo_duration',y='tripinfo_routeLength',marker=markers[i], label=hospital, ax=ax)
+    #filtered_data["tripinfo_duration"].plot.hist()
+    filtered_data.plot.box(figsize=(20,5))
+    plt.savefig('/root/Desktop/test.pdf')
+    
+    
+    # data encoder
+    filtered_data = pd.get_dummies(filtered_data, columns=['vehicle_fromTaz', 'vehicle_toTaz'])
+    
+   
+    # missing values 
+    if True in pd.array(filtered_data.isnull().any()):
+       print ('\nMissing values:\n',filtered_data.isnull().any())
+       #filtered_data = filtered_data.dropna()
+       # fill missing values with mean value e.g. tripinfo duration
+       filtered_data['tripinfo_duration'] = filtered_data['tripinfo_duration'].fillna(filtered_data['tripinfo_duration'].mean())
+       
+    filtered_data.hist() 
+    plt.show()       
+    filtered_data.to_csv(os.path.join(options.sumofiles,'../parsed',results_name), header=True)           
+    
+    
 if __name__ == "__main__":
     main()
