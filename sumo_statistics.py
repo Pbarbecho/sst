@@ -188,7 +188,6 @@ def main(args=None):
     
     print(f'Parsed --> {results_name}')
 
-    
     # get plot insigths
     markers=['o','+','x','^','<']
     ax = plt.axes()
