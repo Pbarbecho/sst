@@ -19,11 +19,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from xml.dom import minidom
 import seaborn as sns
-from sklearn.preprocessing import scale
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.layers import Dense
-from utils import plot_predict_vs_real, xml2csv, lanes_counter_taz_locations, avrg_speed_and_geo_positions, veh_trip_info, remove_outage_points, encode_data, remove_features, add_features, feature_importance
+from utils import SUMO_preprocess, preprocess, scale_df, plot_predict_vs_real, feature_importance
 from keras.callbacks import EarlyStopping
 from sklearn.metrics import mean_squared_error
  
@@ -66,76 +65,30 @@ def sim_files_search(dir):
 def main(args=None):
     # get command line options
     options = get_options(args)
-    
-    """
-    # Process SUMO output files to build the dataset
-    sumo_dic = xml2csv(options)                                                                   # Get sumo output files into a dictionary of dataframes
-    taz_locations_edgenum_df = lanes_counter_taz_locations(sumo_dic['vehroute'])                  # Count edges on route from vehroute file and get from/to TAZ locations
-    veh_speed_positions_df = avrg_speed_and_geo_positions(sumo_dic['fcd'])                        # Get average speed and initial/end positions (x,y)
-    tripinfo_df = veh_trip_info(sumo_dic['tripinfo']) 
-    
-    # find/convert sumo simulation .rou/taz files
-    #rou, taz = sim_files_search(options.simfiles)
-    
-    # merge dataframes
-    data = taz_locations_edgenum_df.merge(veh_speed_positions_df,on='ID').merge(tripinfo_df,on='ID')
-    data.to_csv(os.path.join(options.sumofiles,'../parsed', 'data.csv'), index=False, header=True)
-    print('Parsed --> data.csv')
-    """
-    
-    # Just read not process sumo files
-    data = pd.read_csv(os.path.join(options.sumofiles,'../parsed', 'data.csv'))
-    data.drop(columns='Unnamed: 0', inplace=True)
-    #################################################################################
-    
-    # Preprocess data
-    data = remove_outage_points(data) 
-    data = encode_data(data)   
-    data = remove_features(data)                                                                  # remove unused features
-    data = add_features(data)                                                                     # add new problem features / based on what we know of the problem / we can add 15min restrictions here
-    
-    # Save preprocess data
-    data.to_csv(os.path.join(options.sumofiles,'../parsed', 'preprocess_data.csv'), index=False, header=True)
-    
-    # Scale preprocess values
-    explored_variable = 'tripinfo_duration'     #************************************************************
-    pre_scaled = data.copy()
-    df_scaled = pre_scaled.drop([explored_variable], axis=1)                                    # before scaling we should remove the output
-    df_scaled = scale(df_scaled)
-
-    # concat scaled and output ('trip_duration')
-    col = data.columns.tolist()
-    col.remove(explored_variable)
-    
-    df_scaled = pd.DataFrame(df_scaled, columns=col, index=data.index)
-    df_scaled = pd.concat([df_scaled, data[explored_variable]], axis=1)
-    
-    # Save scaled data
-    df_scaled.to_csv(os.path.join(options.sumofiles,'../parsed','scaled_data.csv'), index=False, header=True)            
- 
   
-    # # Split the dataframe into a training and testing set
-    df = df_scaled.copy()
+    # SUMO build dataframe Time comsuming process. Once generated comment #
+    data = SUMO_preprocess(options)
     
-    X = df.loc[:, df.columns != explored_variable] 
-    y = df[explored_variable]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
-
-
-    X.to_csv(os.path.join(options.sumofiles,'../parsed','x.csv'), index=False, header=True)        
-    y.to_csv(os.path.join(options.sumofiles,'../parsed','y.csv'), index=False, header=True)        
-    X_train.to_csv(os.path.join(options.sumofiles,'../parsed','X_train.csv'), index=False, header=True)
-    y_train.to_csv(os.path.join(options.sumofiles,'../parsed','Y_train.csv'), index=False, header=True)
-
-    X_test.to_csv(os.path.join(options.sumofiles,'../parsed','X_test.csv'),  header=True)
-    y_test.to_csv(os.path.join(options.sumofiles,'../parsed','Y_test.csv'),  header=True)
-
+    # Read SUMO database 
+    data = pd.read_csv(os.path.join(options.sumofiles,'../parsed', 'data.csv'))
+    #data.drop(columns='Unnamed: 0', inplace=True)
+        
+    # Preprocess data
+    data = preprocess(data)                                    
+    
+    # Scale data
+    predicted_variable = 'tripinfo_duration'
+    df = scale_df(data, predicted_variable)
+   
+    # Split the dataframe into a training and testing set
+    X = df.loc[:, df.columns != predicted_variable] 
+    y = df[predicted_variable]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)        
+    
     # asses feature importance with random forest
     #feature_importance(df, X_train, y_train)
         
-        
     # Build neural network in Keras
-  
     model=Sequential()
     activation_f = 'relu'             # 'relu'
     model.add(Dense(128, activation= activation_f, input_dim=X_train.shape[1]))
@@ -150,7 +103,6 @@ def main(args=None):
     # overfitting
     #early_stopping = EarlyStopping(monitor='val_loss', patience=3)
     #model.fit(X_train, y_train, epochs=100,validation_split=0.2,callbacks=[early_stopping])
-    
     
     # Test model
     train_pred = model.predict(X_train)
@@ -169,6 +121,5 @@ def main(args=None):
     plot_predict_vs_real(test_pred, y_test, 100)
     
     
-
 if __name__ == "__main__":
     main()
