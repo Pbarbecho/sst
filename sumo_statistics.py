@@ -15,7 +15,6 @@ Created on Sat Nov 21 11:00:34 2020
 import argparse
 import sys, os
 import pandas as pd
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from xml.dom import minidom
@@ -24,7 +23,7 @@ from sklearn.preprocessing import scale
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.layers import Dense
-from utils import xml2csv, lanes_counter_taz_locations, avrg_speed_and_geo_positions, veh_trip_info, remove_outage_points, encode_data, remove_features, add_features, feature_importance
+from utils import plot_predict_vs_real, xml2csv, lanes_counter_taz_locations, avrg_speed_and_geo_positions, veh_trip_info, remove_outage_points, encode_data, remove_features, add_features, feature_importance
 from keras.callbacks import EarlyStopping
 from sklearn.metrics import mean_squared_error
  
@@ -128,6 +127,8 @@ def main(args=None):
     X_train.to_csv(os.path.join(options.sumofiles,'../parsed','X_train.csv'), index=False, header=True)
     y_train.to_csv(os.path.join(options.sumofiles,'../parsed','Y_train.csv'), index=False, header=True)
 
+    X_test.to_csv(os.path.join(options.sumofiles,'../parsed','X_test.csv'),  header=True)
+    y_test.to_csv(os.path.join(options.sumofiles,'../parsed','Y_test.csv'),  header=True)
 
     # asses feature importance with random forest
     #feature_importance(df, X_train, y_train)
@@ -136,18 +137,19 @@ def main(args=None):
     # Build neural network in Keras
   
     model=Sequential()
-    model.add(Dense(128, activation= 'relu', input_dim=X_train.shape[1]))
-    model.add(Dense(64, activation= 'relu'))
-    model.add(Dense(32, activation= 'relu'))
-    model.add(Dense(8, activation= 'relu'))
+    activation_f = 'relu'             # 'relu'
+    model.add(Dense(128, activation= activation_f, input_dim=X_train.shape[1]))
+    model.add(Dense(64, activation= activation_f))
+    model.add(Dense(32, activation= activation_f))
+    model.add(Dense(8, activation= activation_f))
     model.add(Dense(1))
     #print(model.summary())
     model.compile(loss='mse', optimizer='adam', metrics=['mse'])
-    model.fit(X_train, y_train, epochs=50)
+    model.fit(X_train, y_train, epochs=2)
     
     # overfitting
     #early_stopping = EarlyStopping(monitor='val_loss', patience=3)
-    #model.fit(X_train, y_train, epochs=200,validation_split=0.2,callbacks=[early_stopping])
+    #model.fit(X_train, y_train, epochs=100,validation_split=0.2,callbacks=[early_stopping])
     
     
     # Test model
@@ -159,10 +161,12 @@ def main(args=None):
     print("Test RMSE: {:0.2f}".format(test_rmse))
     print('------------------------')
     scores = model.evaluate(X_train, y_train)
-    print('Training accuracy: ' , (scores))
+    print('Training accuracy: ' , (scores[1]))
     scores = model.evaluate(X_test, y_test)
-    print('Testing accuracy: ' , (scores))
+    print('Testing accuracy: ' , (scores[1]))
     
+    # Plot test real vs predicted
+    plot_predict_vs_real(test_pred, y_test, 100)
     
     
 

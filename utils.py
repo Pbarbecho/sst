@@ -91,6 +91,8 @@ def avrg_speed_and_geo_positions(df):
     # Get positions df
     positions_list = [get_positions(df,id,min,max) for id,min,max in zip(time_df['vehicle_id'], time_df['min'], time_df['max'])]
     positions_df = pd.DataFrame(positions_list, columns=['ID', 'ini_time', 'end_time', 'ini_x_pos', 'ini_y_pos','end_x_pos', 'end_y_pos' ])
+    speed_positions = speed_df.concat(positions_df)
+    
     return save_file(positions_df, 'veh_speed_positions_df')
     
 
@@ -168,6 +170,18 @@ def feature_importance(df, X_train, y_train):
     plt.savefig('/root/Documents/SUMO_SEM/CATALUNYA/plots/feature_importance.pdf')  
     
     
+def plot_predict_vs_real(predicted, real, samples):    
+    y_real = real.to_numpy()
+    y_predicted = predicted
+    
+    plt.plot(y_real[:samples]/60,'o-', label='Real')
+    plt.plot(y_predicted[:samples]/60, 'o-', label='Predicted')
+    plt.title('Trip time prediction')
+    plt.grid(None)
+    plt.xlabel('Samples')
+    plt.ylabel("Trip time [min]")
+    plt.legend()
+    plt.show()
     
     
     
