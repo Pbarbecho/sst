@@ -13,33 +13,27 @@ Created on Sat Nov 21 11:00:34 2020
 
 #from collections import defaultdict
 import argparse
-import os
-import sys
+import sys, os
 import pandas as pd
 import matplotlib
-#matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import numpy as np
 from xml.dom import minidom
 import seaborn as sns
-
-
-if 'SUMO_HOME' in os.environ:
-    tools = os.path.join('/opt/sumo-1.5.0/', 'tools')
-    curr_dir = os.path.dirname(os.path.realpath(__file__))
-    sys.path.append(os.path.join(tools))
-    #from sumolib.output import parse  # noqa
-    #from sumolib.net import readNet  # noqa
-    from sumolib.miscutils import Statistics  # noqa
-else:
-    sys.exit("please declare environment variable 'SUMO_HOME'")
-
+from sklearn.preprocessing import scale
+from sklearn.model_selection import train_test_split
+from keras.models import Sequential
+from keras.layers import Dense
+from utils import xml2csv, lanes_counter_taz_locations, avrg_speed_and_geo_positions, veh_trip_info, remove_outage_points, encode_data, remove_features, add_features, feature_importance
+from keras.callbacks import EarlyStopping
+from sklearn.metrics import mean_squared_error
+ 
 
 def get_options(args=None):
     ## Command line options ##
     parser = argparse.ArgumentParser(prog='SUMO Statistics', usage='%(prog)s -c <sumo sim files directory> -s <sumo output files directory>' )
     parser.add_argument('-c', '--sim dir', type=directory_exist, dest='simfiles', help='SUMO simulation files directory (rou/TAZ)')
-    parser.add_argument('-s', '--output dir', type=directory_exist, dest='sumofiles', help='SUMO output files directory (tripinfo/summary)')
+    parser.add_argument('-s', '--output dir', type=directory_exist, dest='sumofiles', help='SUMO output files directory (tripinfo/summary/emission/...)')
     options = parser.parse_args(args=args)
     if not options.sumofiles or not options.sumofiles:
         sys.exit("-s [options] and -c [options] are required, see sumo_statistics --help")
@@ -52,74 +46,6 @@ def directory_exist(dir):
        return dir
     else:
         raise argparse.ArgumentTypeError("{} invalid directory ".format(dir))
-
-
-def xml2df(in_directory, name):
-    # output dir
-    output = os.path.join(in_directory,'..','xmltocsv', f'{name.strip(".xml")}.csv')
-    # SUMO tool xml into csv
-    sumo_tool = os.path.join(tools, 'xml', 'xml2csv.py')
-    # Run sumo tool with sumo output file as input
-    cmd = 'python {} {} -s , -o {}'.format(sumo_tool, os.path.join(in_directory,name), output)
-    print(f'{name} -->  {name.strip(".xml")}.csv')
-    os.system(cmd)
-    # return dataframe
-    return pd.read_csv(output)
-
-
-def summary_example_plots(data, type, input_dir):
-    """
-    //  Summary Output file structure
-    Index(['step_arrived', 'step_collisions', 'step_duration', 'step_ended',
-           'step_halting', 'step_inserted', 'step_loaded', 'step_meanSpeed',
-           'step_meanSpeedRelative', 'step_meanTravelTime', 'step_meanWaitingTime',
-           'step_running', 'step_teleports', 'step_time', 'step_waiting'],
-          dtype='object')
-    """
-    # e.g. plots
-
-    # Time(min) vs vehicles status (inserted running teleported)
-    x= data['step_time']/60
-    plt.plot(x, data['step_inserted'], linewidth=1.0, label='Inserted veh')
-    plt.plot(x, data['step_running'], color='green', linewidth=1.0,  linestyle='--', label='Running veh')
-    plt.plot(x, data['step_teleports'], color='red', linewidth=1.0, linestyle='--', label='Teleported veh')
-    plt.legend(loc='best')
-    plt.xlabel('Time [min]')
-    plt.ylabel('# of vehicles')
-    plt.savefig(os.path.join(os.path.split(input_dir)[0], '{}_timeVSvehstatus.pdf'.format(type)), bbox_inches="tight")
-
-
-def merge_data_plots(merge_data, input_dir):
-    """
-    merge data structure
-    Index(['tripinfo_arrival', 'tripinfo_arrivalLane', 'tripinfo_arrivalPos',
-           'tripinfo_arrivalSpeed', 'tripinfo_depart', 'tripinfo_departDelay',
-           'tripinfo_departLane', 'tripinfo_departPos', 'tripinfo_departSpeed',
-           'tripinfo_devices', 'tripinfo_duration', 'tripinfo_rerouteNo',
-           'tripinfo_routeLength', 'tripinfo_speedFactor', 'tripinfo_stopTime',
-           'tripinfo_timeLoss', 'tripinfo_vType', 'tripinfo_vaporized',
-           'tripinfo_waitingCount', 'tripinfo_waitingTime', 'vehicle_depart',
-           'vehicle_departLane', 'vehicle_departSpeed', 'vehicle_fromTaz',
-           'vehicle_toTaz', 'route_edges'],
-    """
-
-    TAZ_statistics = merge_data.groupby('vehicle_fromTaz').describe()
-    TAZ_statistics = TAZ_statistics.reset_index(level=list(range(TAZ_statistics.index.nlevels)))
-    TAZ_statistics.to_csv(os.path.join(os.path.split(input_dir)[0], 'TAZ_statistics.csv'), header=True)
-    # PLOT 1 -> # Number of routes
-    ax1 = sns.barplot(TAZ_statistics['vehicle_fromTaz'], TAZ_statistics['tripinfo_routeLength']['count'])
-    ax1.set(xlabel=r"Routes", ylabel=r'# of routes')
-    plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_count.pdf'), bbox_inches='tight')
-    plt.clf()
-    # PLOT 2 -> # Route distance
-    ax2 = sns.barplot(TAZ_statistics['vehicle_fromTaz'], TAZ_statistics['tripinfo_routeLength']['mean']/1000)
-    ax2.set(xlabel=r"Routes", ylabel=('Route distance [km]'))
-    plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_distance.pdf'),bbox_inches='tight')
-    plt.clf()
-    # PLOT 3 -> # Route Time
-    ax3 = sns.barplot(TAZ_statistics['vehicle_fromTaz'], TAZ_statistics['tripinfo_duration']['mean']/60)
-    ax3.set(xlabel=r"Routes", ylabel=('Route time [min]'))
-    plt.savefig(os.path.join(os.path.split(input_dir)[0], 'route_time.pdf'),bbox_inches='tight')
 
 
 def sim_files_search(dir):
@@ -142,81 +68,103 @@ def main(args=None):
     # get command line options
     options = get_options(args)
     
-    # read sumo tripinfo and summary files
-    sumo_file_list = os.listdir(options.sumofiles)
-    if sumo_file_list:
-        files_dic = {}
-        for f in sumo_file_list:
-            files_dic[f.strip('.xml')] = xml2df(options.sumofiles, f)
-    else:
-         sys.exit(f"Empty folder or tripinfo file missing {options.sumofiles}")
-
+    """
+    # Process SUMO output files to build the dataset
+    sumo_dic = xml2csv(options)                                                                   # Get sumo output files into a dictionary of dataframes
+    taz_locations_edgenum_df = lanes_counter_taz_locations(sumo_dic['vehroute'])                  # Count edges on route from vehroute file and get from/to TAZ locations
+    veh_speed_positions_df = avrg_speed_and_geo_positions(sumo_dic['fcd'])                        # Get average speed and initial/end positions (x,y)
+    tripinfo_df = veh_trip_info(sumo_dic['tripinfo']) 
     
     # find/convert sumo simulation .rou/taz files
-    rou, taz = sim_files_search(options.simfiles)
-    rou_file_df = xml2df(options.simfiles, rou)
-    
-    # Prepare dataframes to merge tripinfo and route files by vehicleID
-    rou_file_df.rename(columns={"vehicle_id": "ID"}, inplace=True)
-    tripinfo_df = files_dic['tripinfo']
-    tripinfo_df.rename(columns={"tripinfo_id": "ID"},  inplace=True)
+    #rou, taz = sim_files_search(options.simfiles)
     
     # merge dataframes
-    merge_data = tripinfo_df.set_index('ID').join(rou_file_df.set_index('ID'))
+    data = taz_locations_edgenum_df.merge(veh_speed_positions_df,on='ID').merge(tripinfo_df,on='ID')
+    data.to_csv(os.path.join(options.sumofiles,'../parsed', 'data.csv'), index=False, header=True)
+    print('Parsed --> data.csv')
+    """
     
-    # filter data
-    results_name = 'filter_trip_rou_data.csv'
-    filtered_data = merge_data[['tripinfo_arrivalSpeed', 
-                               'tripinfo_duration',
-                               'tripinfo_rerouteNo',
-                               'tripinfo_routeLength', 
-                               'tripinfo_speedFactor',
-                               'tripinfo_departSpeed',
-                               'tripinfo_timeLoss', 
-                               'tripinfo_vaporized',
-                               'tripinfo_waitingCount', 
-                               'tripinfo_waitingTime', 
-                               'vehicle_type', 
-                               'vehicle_fromTaz',
-                               'vehicle_toTaz']]
+    # Just read not process sumo files
+    data = pd.read_csv(os.path.join(options.sumofiles,'../parsed', 'data.csv'))
+    data.drop(columns='Unnamed: 0', inplace=True)
+    #################################################################################
     
+    # Preprocess data
+    data = remove_outage_points(data) 
+    data = encode_data(data)   
+    data = remove_features(data)                                                                  # remove unused features
+    data = add_features(data)                                                                     # add new problem features / based on what we know of the problem / we can add 15min restrictions here
     
-    # filter unfinished trips or teleported vehicles
-    filtered_data = filtered_data.loc[filtered_data['tripinfo_rerouteNo'] == 0 &
-                                      filtered_data['tripinfo_vaporized'].empty]
-    filtered_data.drop(columns='tripinfo_vaporized', inplace=True)
+    # Save preprocess data
+    data.to_csv(os.path.join(options.sumofiles,'../parsed', 'preprocess_data.csv'), index=False, header=True)
     
-    print(f'Parsed --> {results_name}')
+    # Scale preprocess values
+    explored_variable = 'tripinfo_duration'     #************************************************************
+    pre_scaled = data.copy()
+    df_scaled = pre_scaled.drop([explored_variable], axis=1)                                    # before scaling we should remove the output
+    df_scaled = scale(df_scaled)
+
+    # concat scaled and output ('trip_duration')
+    col = data.columns.tolist()
+    col.remove(explored_variable)
+    
+    df_scaled = pd.DataFrame(df_scaled, columns=col, index=data.index)
+    df_scaled = pd.concat([df_scaled, data[explored_variable]], axis=1)
+    
+    # Save scaled data
+    df_scaled.to_csv(os.path.join(options.sumofiles,'../parsed','scaled_data.csv'), index=False, header=True)            
+ 
+  
+    # # Split the dataframe into a training and testing set
+    df = df_scaled.copy()
+    
+    X = df.loc[:, df.columns != explored_variable] 
+    y = df[explored_variable]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
 
 
-    # get plot insigths
-    markers=['o','+','x','^','<']
-    ax = plt.axes()
-    for i, hospital in enumerate(filtered_data['vehicle_toTaz'].unique()):
-        df = filtered_data[filtered_data['vehicle_toTaz'] == hospital]
-        df.plot.scatter(x='tripinfo_duration',y='tripinfo_routeLength',marker=markers[i], label=hospital, ax=ax)
-    filtered_data.plot.box(figsize=(20,5))
-    plt.savefig('/root/Documents/SUMO_SEM/CATALUNYA/plots/box.pdf')
+    X.to_csv(os.path.join(options.sumofiles,'../parsed','x.csv'), index=False, header=True)        
+    y.to_csv(os.path.join(options.sumofiles,'../parsed','y.csv'), index=False, header=True)        
+    X_train.to_csv(os.path.join(options.sumofiles,'../parsed','X_train.csv'), index=False, header=True)
+    y_train.to_csv(os.path.join(options.sumofiles,'../parsed','Y_train.csv'), index=False, header=True)
+
+
+    # asses feature importance with random forest
+    #feature_importance(df, X_train, y_train)
+        
+        
+    # Build neural network in Keras
+  
+    model=Sequential()
+    model.add(Dense(128, activation= 'relu', input_dim=X_train.shape[1]))
+    model.add(Dense(64, activation= 'relu'))
+    model.add(Dense(32, activation= 'relu'))
+    model.add(Dense(8, activation= 'relu'))
+    model.add(Dense(1))
+    #print(model.summary())
+    model.compile(loss='mse', optimizer='adam', metrics=['mse'])
+    model.fit(X_train, y_train, epochs=50)
     
-    # data encoder
-    filtered_data = pd.get_dummies(filtered_data, columns=['vehicle_fromTaz', 'vehicle_toTaz'])
+    # overfitting
+    #early_stopping = EarlyStopping(monitor='val_loss', patience=3)
+    #model.fit(X_train, y_train, epochs=200,validation_split=0.2,callbacks=[early_stopping])
     
-   
-    # missing values 
-    if True in pd.array(filtered_data.isnull().any()):
-       print ('\nMissing values:\n',filtered_data.isnull().any())
-       #filtered_data = filtered_data.dropna()
-       # fill missing values with mean value e.g. tripinfo duration
-       filtered_data['tripinfo_duration'] = filtered_data['tripinfo_duration'].fillna(filtered_data['tripinfo_duration'].mean())
-
-
-    # get plot insigths
-    plt.rcParams.update({'font.size': '5'})
-    #filtered_data.hist()
-    filtered_data.hist(figsize=(10, 12))
-    plt.savefig('/root/Documents/SUMO_SEM/CATALUNYA/plots/hist.pdf')
-    filtered_data.to_csv(os.path.join(options.sumofiles,'../parsed',results_name), header=True)
-
+    
+    # Test model
+    train_pred = model.predict(X_train)
+    train_rmse = np.sqrt(mean_squared_error(y_train, train_pred))
+    test_pred = model.predict(X_test)
+    test_rmse = np.sqrt(mean_squared_error(y_test, test_pred))
+    print("Train RMSE: {:0.2f}".format(train_rmse))
+    print("Test RMSE: {:0.2f}".format(test_rmse))
+    print('------------------------')
+    scores = model.evaluate(X_train, y_train)
+    print('Training accuracy: ' , (scores))
+    scores = model.evaluate(X_test, y_test)
+    print('Testing accuracy: ' , (scores))
+    
+    
+    
 
 if __name__ == "__main__":
     main()
